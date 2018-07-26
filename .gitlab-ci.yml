@@ -1,24 +1,45 @@
-image: maven:3-jdk-7
+image: docker:latest
+
+variables:
+  DOCKER_DRIVER: overlay
+  SPRING_PROFILES_ACTIVE: gitlab-ci
+  DOCKER_OPTS: "--insecure-registry=gitlab.vagrant.test:4567"
+  DOCKER_HOST: "tcp://lordgaav__dind-options:2375"
+
+services:
+  - lordgaav/dind-options:latest
 
 stages:
   - build
+  - package
   - test
   - deploy
 
-build:
+maven-build:
+  image: maven:3-jdk-8
   stage: build
-  script: "mvn install -B"
+  script: "mvn -Dmaven.test.failure.ignore -f pom.xml clean package -U"
+  artifacts:
+    paths:
+      - target/*.jar
+      - target/*.war
+  tags:
+    - docker
+
+docker-build:
+  stage: package
+  script:
+  - docker build -t gitlab.vagrant.test:4567/root/struts2-rce .
+  - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN gitlab.vagrant.test:4567
+  - docker push gitlab.vagrant.test:4567/root/struts2-rce
   tags:
     - docker
 
 dependency_scanning:
   stage: test
-  image: docker:stable
   variables:
     DOCKER_DRIVER: overlay2
   allow_failure: true
-  services:
-    - docker:stable-dind
   script:
     - echo 1   database-server >> /etc/hosts
     - export SP_VERSION=$(echo "$CI_SERVER_VERSION" | sed 's/^\([0-9]*\)\.\([0-9]*\).*/\1-\2-stable/')
