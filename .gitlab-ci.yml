@@ -52,3 +52,26 @@ dependency_scanning:
     paths: [gl-dependency-scanning-report.json]
   tags:
     - docker
+
+deploy_development:
+  stage: test
+  image: kroniak/ssh-client
+  script:
+    # Disable strict host key checking
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    # add ssh key stored in SSH_PRIVATE_KEY variable to the agent store
+    - eval $(ssh-agent -s)
+    - ssh-add <(echo "$SSH_PRIVATE_KEY")
+    # log into Docker registry
+    - ssh deployer@dev.vagrant.test "docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN gitlab.vagrant.test:4567"
+    # stop container, remove image.
+    - ssh deployer@dev.vagrant.test "docker stop hackme_${CI_COMMIT_REF_SLUG}" || true
+    - ssh deployer@dev.vagrant.test "docker rm hackme_${CI_COMMIT_REF_SLUG}" || true
+    - ssh deployer@dev.vagrant.test "docker rmi gitlab.vagrant.test:4567/root/struts2-rce" || true
+    # start new container
+    #  ssh deployer@dev.vagrant.test "docker run --name hackme_${CI_COMMIT_REF_SLUG} --network=web -d gitlab.vagrant.test:4567/root/struts2-rce"
+    - ssh deployer@dev.vagrant.test "docker run --name hackme_${CI_COMMIT_REF_SLUG} -p 8080:8080 -d gitlab.vagrant.test:4567/root/struts2-rce"
+  tags:
+    - docker
